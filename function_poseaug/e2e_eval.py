@@ -4,6 +4,7 @@ import time
 import pickle
 import numpy as np
 import torch
+import wandb
 from torch.utils.data import DataLoader
 
 from common.data_loader import PoseDataSet
@@ -11,28 +12,36 @@ from progress.bar import Bar
 from utils.data_utils import fetch
 from utils.loss import mpjpe, p_mpjpe, compute_PCK, compute_AUC
 from utils.utils import AverageMeter
+from function_poseaug.poseaug_viz import plot_joints
+from matplotlib import pyplot as plt
 
+import seaborn
+def draw(data, ax):
+    seaborn.heatmap(data, xticklabels=range(1,15), square=True, yticklabels=range(1,15), vmin=0.0, vmax=1.0,
+                    cbar=False, ax=ax)
 
 ####################################################################
 # ### evaluate p1 p2 pck auc dataset with test-flip-augmentation
 ####################################################################
-def evaluate(data_loader, model_pos_eval, device, summary=None, writer=None, key='', tag='', flipaug=''):
+def evaluate(data_loader, model_pos_eval, model_port_eval, device, args=None, summary=None, writer=None, key='', tag='', flipaug=''):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     epoch_p1 = AverageMeter()
     epoch_p2 = AverageMeter()
+    epoch_p3 = AverageMeter()
+    epoch_p4 = AverageMeter()
     epoch_auc = AverageMeter()
     epoch_pck = AverageMeter()
 
     # Switch to evaluate mode
     model_pos_eval.eval()
+    model_port_eval.eval()
     end = time.time()
 
     bar = Bar('Eval posenet on {}'.format(key), max=len(data_loader))
     output_lst =[]
     for i, temp in enumerate(data_loader):
-        targets_3d, inputs_2d = temp[0], temp[1]
-
+        targets_3d, inputs_2d, cam_param = temp[0], temp[1], temp[3]
         # Measure data loading time
         data_time.update(time.time() - end)
         num_poses = targets_3d.size(0)
@@ -56,19 +65,23 @@ def evaluate(data_loader, model_pos_eval, device, summary=None, writer=None, key
                 outputs_3d = (outputs_3d + outputs_3d_flip) / 2.0
 
             else:
-                outputs_3d = model_pos_eval(inputs_2d.view(num_poses, -1)).view(num_poses, -1, 3).cpu()
-
+                pos_output = model_pos_eval(inputs_2d.view(num_poses, -1))
+                pos_output_localized = pos_output[:, :, :] - pos_output[:, :1, :]  # the output is relative to the 0 joint
+                ref_output = model_port_eval(pos_output_localized)
         # caculate the relative position.
+        # ref_output = ref_output[:, :, :] - ref_output[:, :1, :]  # the output is relative to the 0 joint
         targets_3d = targets_3d[:, :, :] - targets_3d[:, :1, :]  # the output is relative to the 0 joint
-        outputs_3d = outputs_3d[:, :, :] - outputs_3d[:, :1, :]  # the output is relative to the 0 joint
 
-        output_split = [val.detach().clone().cpu() for val in outputs_3d.split(1)]
-        output_lst.extend(output_split)
         # compute p1 and p2
-        p1score = mpjpe(outputs_3d, targets_3d).item() * 1000.0
+        p1score = mpjpe(pos_output.cpu(), targets_3d.cpu()).item() * 1000.0
         epoch_p1.update(p1score, num_poses)
-        p2score = p_mpjpe(outputs_3d.numpy(), targets_3d.numpy()).item() * 1000.0
+        p2score = p_mpjpe(pos_output.cpu().numpy(), targets_3d.cpu().numpy()).item() * 1000.0
         epoch_p2.update(p2score, num_poses)
+
+        p3score = mpjpe(ref_output.logits.view(num_poses, -1, 3).cpu(), targets_3d.cpu()).item() * 1000.0
+        epoch_p3.update(p3score, num_poses)
+        p4score = p_mpjpe(ref_output.logits.view(num_poses, -1, 3).cpu().numpy(), targets_3d.cpu().numpy()).item() * 1000.0
+        epoch_p4.update(p4score, num_poses)
 
         # compute AUC and PCK
         # pck = compute_PCK(targets_3d.numpy(), outputs_3d.numpy())
@@ -80,38 +93,23 @@ def evaluate(data_loader, model_pos_eval, device, summary=None, writer=None, key
         batch_time.update(time.time() - end)
         end = time.time()
 
-        bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {ttl:} | ETA: {eta:} ' \
-                     '| MPJPE: {e1: .4f} | P-MPJPE: {e2: .4f}' \
-            .format(batch=i + 1, size=len(data_loader), data=data_time.avg, bt=batch_time.avg,
-                    ttl=bar.elapsed_td, eta=bar.eta_td, e1=epoch_p1.avg,
-                    e2=epoch_p2.avg)
-        bar.next()
-    # with open(f"data/videopose_output.pkl", "wb") as p_f1:
-        # pickle.dump(output_lst, p_f1)
-
-    if writer:
-        writer.add_scalar('posenet_{}'.format(key) + flipaug + '/p1score' + tag, epoch_p1.avg, summary.epoch)
-        writer.add_scalar('posenet_{}'.format(key) + flipaug + '/p2score' + tag, epoch_p2.avg, summary.epoch)
-        # writer.add_scalar('posenet_{}'.format(key) + flipaug + '/_pck' + tag, epoch_pck.avg, summary.epoch)
-        # writer.add_scalar('posenet_{}'.format(key) + flipaug + '/_auc' + tag, epoch_auc.avg, summary.epoch)
+        # plot_joints(targets_3d.cpu(), inputs_2d.cpu(), pos_output.cpu(), ref_output.logits.view(num_poses, -1, 3).cpu() + pos_output[:,:1,:].cpu(), cam_param, i, args)
 
     bar.finish()
-    return epoch_p1.avg, epoch_p2.avg
+    return epoch_p1.avg, epoch_p2.avg, epoch_p3.avg, epoch_p4.avg
 
 
-#########################################
-# overall evaluation function
-#########################################
-def evaluate_posenet(args, data_dict, model_pos, model_pos_eval, device, summary, writer, tag):
-    """
-    evaluate H36M and 3DHP
-    test-augment-flip only used for 3DHP as it does not help on H36M.
-    """
-    with torch.no_grad():
-        model_pos_eval.load_state_dict(model_pos.state_dict())
-        h36m_p1, h36m_p2 = evaluate(data_dict['H36M_test'], model_pos_eval, device, summary, writer,
-                                             key='H36M_test', tag=tag, flipaug='')  # no flip aug for h36m
-        dhp_p1, dhp_p2 = evaluate(data_dict['mpi3d_loader'], model_pos_eval, device, summary, writer,
-                                           key='mpi3d_loader', tag=tag, flipaug='_flip')
-    return h36m_p1, h36m_p2, dhp_p1, dhp_p2
+def save_fig(ref_output):
+    fig, axs = plt.subplots(4,4, figsize=(10, 10))
+    fig.suptitle(f"attn", fontsize=25)
+    for i in range(0,4,1):
+        for h in range(4):
+            draw(ref_output.attentions[i][0, h].cpu(), axs[i,h%4])
+            axs[h//4,h%4].set_title(f"head_{h+1}",fontsize=10)
+            # plt.savefig(f"attn/Layer_{i}.png")
+    plt.show()
+    plt.savefig(f"attn/Layer.png")
 
+def save_output(output_lst, outputs_3d):
+    output_split = [val.detach().clone().cpu() for val in outputs_3d.split(1)]
+    output_lst.extend(output_split)

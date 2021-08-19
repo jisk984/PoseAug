@@ -137,3 +137,33 @@ def get_scheduler(optimizer, policy, nepoch_fix=None, nepoch=None, decay_step=No
     else:
         return NotImplementedError('learning rate policy [%s] is not implemented', policy)
     return scheduler
+
+def get_masked_input_and_labels(inp, mask_value=1, mask_p=0.15,
+                                mask_random_p=0.1, mask_remain_p=0.1, mask_random_s=1, dim=0):
+    device = inp.device
+    # BERT masking
+    inp_mask = torch.rand(*inp.shape[:2]).to(device) < mask_p
+
+    # Prepare input
+    inp_masked = inp.clone().float()
+
+    # Set input to [MASK] which is the last token for the 90% of tokens
+    # This means leaving 10% unchanged
+    inp_mask_2mask = inp_mask & (torch.rand(*inp.shape[:2]).to(device) < 1 - mask_remain_p)
+    inp_masked[:,:,dim:][inp_mask_2mask] = mask_value # mask token is the last in the dict
+
+    # Set 10% to a random token
+    inp_mask_2random = inp_mask_2mask & (torch.rand(*inp.shape[:2]).to(device) < mask_random_p / (1 - mask_remain_p))
+
+    inp_masked[:,:,dim:][inp_mask_2random] = mask_random_s * torch.rand(inp_mask_2random.sum().item(), inp.shape[2]-dim).to(device) - mask_random_s / 2
+
+    # y_labels would be same as encoded_texts i.e input tokens
+    gt = inp.clone()
+
+    return inp_masked, gt, inp_mask.int()
+
+
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+

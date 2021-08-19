@@ -17,8 +17,8 @@ def get_parse_args():
     parser.add_argument('--note', default='debug', type=str, help='additional name on checkpoint directory')
 
     # Evaluate choice
-    parser.add_argument('--evaluate', default='', type=str, metavar='FILENAME',
-                        help='checkpoint to evaluate (file name)')
+    parser.add_argument('--evaluate', default='', type=str, metavar='FILENAME', help='checkpoint to evaluate (file name)')
+    parser.add_argument('--eval_period', default=5, type=int, help='')
     parser.add_argument('--action-wise', default=True, type=lambda x: (str(x).lower() == 'true'), help='train s1only')
 
     # Model arguments
@@ -26,16 +26,31 @@ def get_parse_args():
     parser.add_argument('--stages', default=4, type=int, metavar='N', help='stages of baseline model')
     parser.add_argument('--dropout', default=0.25, type=float, help='dropout rate')
 
+    # port arguments
+    parser.add_argument('--embd_dim', type=int, default=128, help='')
+    parser.add_argument('--dropout_port', type=float, default=0.1, help='')
+    parser.add_argument('--hidden_dim', type=int, default=256, help='')
+    parser.add_argument('--n_layers', type=int, default=4, help='')
+    parser.add_argument('--output_attentions', action='store_true')
+    parser.add_argument('--output_hidden_states', action='store_true')
+    parser.add_argument('--mask_val', type=float, default=1, help='') ## TODO max값 넣도록
+    parser.add_argument('--mask_p', type=float, default=0.2, help='')
+    parser.add_argument('--mask_remain_p', type=float, default=0.1, help='')
+    parser.add_argument('--mask_random_p', type=float, default=0.1, help='')
+
     # Training detail
     parser.add_argument('--batch_size', default=1024, type=int, metavar='N',
                         help='batch size in terms of predicted frames')
     parser.add_argument('--epochs', default=50, type=int, metavar='N', help='number of training epochs')
 
     # Learning rate
+    parser.add_argument('--scheduler', default="cos_warmup", type=str, metavar='LR', help='initial learning rate')
     parser.add_argument('--lr', default=1.0e-3, type=float, metavar='LR', help='initial learning rate')
     parser.add_argument('--lr_decay', type=int, default=100000, help='num of steps of learning rate decay')
     parser.add_argument('--lr_gamma', type=float, default=0.96, help='gamma of learning rate decay')
     parser.add_argument('--no_max', dest='max_norm', action='store_false', help='if use max_norm clip on grad')
+    parser.add_argument('--num_warmup_steps', type=int, default=4000, help='')
+    parser.add_argument('--lambda_ref', type=float, default=0.1, help='')
     parser.set_defaults(max_norm=True)
 
     # Experimental setting
@@ -46,6 +61,8 @@ def get_parse_args():
     parser.add_argument('--num_workers', default=2, type=int, metavar='N', help='num of workers for data loading')
 
     args = parser.parse_args()
+    args.n_heads = args.hidden_dim//64
 
     return args
+
 

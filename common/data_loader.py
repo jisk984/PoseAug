@@ -36,6 +36,43 @@ class PoseDataSet(Dataset):
     def __len__(self):
         return len(self._actions)
 
+#####################################
+# data loader with five output
+#####################################
+class PoseDataSet_8(Dataset):
+    def __init__(self, poses_3d, poses_2d, gcn, mlp, stgcn, videopose, actions, cams):
+        assert poses_3d is not None
+
+        self._poses_3d = np.concatenate(poses_3d)
+        self._poses_2d = np.concatenate(poses_2d)
+        self._gcn = gcn
+        self._mlp = mlp
+        self._stgcn = stgcn
+        self._videopose = videopose
+        self._actions = reduce(lambda x, y: x + y, actions)
+        self._cams = np.concatenate(cams)
+
+        assert self._poses_3d.shape[0] == self._poses_2d.shape[0] and self._poses_3d.shape[0] == len(self._actions)
+        assert self._poses_3d.shape[0] == self._cams.shape[0]
+        print('Generating {} poses...'.format(len(self._actions)))
+
+    def __getitem__(self, index):
+        out_pose_3d = self._poses_3d[index]
+        out_pose_2d = self._poses_2d[index]
+        out_action = self._actions[index]
+        out_cam = self._cams[index]
+        gcn = self._gcn[index]
+        mlp = self._mlp[index]
+        stgcn = self._stgcn[index]
+        videopose = self._videopose[index]
+
+        out_pose_3d = torch.from_numpy(out_pose_3d).float()
+        out_pose_2d = torch.from_numpy(out_pose_2d).float()
+
+        return out_pose_3d, out_pose_2d, gcn, mlp, stgcn, videopose, out_action, out_cam
+
+    def __len__(self):
+        return len(self._actions)
 
 #####################################
 # data loader with two output

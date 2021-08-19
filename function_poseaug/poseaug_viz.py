@@ -2,9 +2,8 @@ import os
 
 import matplotlib.pyplot as plt
 
-from common.camera import project_to_2d
+from common.camera import project_to_2d, project_to_2d_linear
 from common.viz import show3Dpose, show3DposePair, show2Dpose
-
 
 def plot_poseaug(inputs_3d, inputs_2d, g_rlt, cam_param, epoch, iter, args):
     outputs_3d_ba = g_rlt['pose_ba']
@@ -23,8 +22,6 @@ def plot_poseaug(inputs_3d, inputs_2d, g_rlt, cam_param, epoch, iter, args):
         outputs_3d_rt.cpu().detach().numpy()[0], outputs_2d_rt.cpu().detach().numpy()[0],
         epoch, iter, args
     )
-
-
 
 def _plot_poseaug(
         tmp_inputs_3d, tmp_inputs_2d,
@@ -80,3 +77,63 @@ def _plot_poseaug(
     image_name = '{}/poseaug_viz/epoch_{:0>4d}_iter_{:0>4d}.png'.format(args.checkpoint, epoch, iter)
     plt.savefig(image_name)
     plt.close('all')
+
+
+def plot_joints(inputs_3d, inputs_2d, outputs_3d, refine_3d, cam_param, epoch, args):
+    # outputs_2d = project_to_2d(outputs_3d, cam_param)
+    # refine_2d = project_to_2d(refine_3d, cam_param)
+    outputs_2d = project_to_2d_linear(outputs_3d, cam_param)
+    refine_2d = project_to_2d_linear(refine_3d, cam_param)
+
+    # plot the augmented pose from origin -> ba -> bl -> rt
+    _plot_joints3d(
+        inputs_3d.cpu().detach().numpy()[0], inputs_2d.cpu().detach().numpy()[0],
+        outputs_3d.cpu().detach().numpy()[0], outputs_2d.cpu().detach().numpy()[0],
+        refine_3d.cpu().detach().numpy()[0], refine_2d.cpu().detach().numpy()[0],
+        epoch, args
+    )
+
+def _plot_joints3d(
+        tmp_inputs_3d, tmp_inputs_2d,
+        tmp_outputs_3d, tmp_outputs_2d,
+        tmp_refine_3d, tmp_refine_2d,
+        epoch, args
+):
+    # plot all the rlt
+    fig3d = plt.figure(figsize=(16, 8))
+
+    # input 3d
+    ax3din = fig3d.add_subplot(2, 3, 1, projection='3d')
+    ax3din.set_title('gt 3D')
+    show3Dpose(tmp_inputs_3d, ax3din, gt=False)
+
+    # show source 2d
+    ax2din = fig3d.add_subplot(2, 3, 4)
+    ax2din.set_title('gt 2d')
+    show2Dpose(tmp_inputs_2d, ax2din)
+
+    # input 3d to modify 3d
+    ax3dba = fig3d.add_subplot(2, 3, 2, projection='3d')
+    ax3dba.set_title('output 3d')
+    show3DposePair(tmp_inputs_3d, tmp_outputs_3d, ax3dba)
+
+    # show source 2d
+    ax2dba = fig3d.add_subplot(2, 3, 5)
+    ax2dba.set_title('output 2d')
+    show2Dpose(tmp_outputs_2d, ax2dba)
+
+    # input 3d to modify 3d
+    ax3dref = fig3d.add_subplot(2, 3, 3, projection='3d')
+    ax3dref.set_title('refine 3d')
+    show3DposePair(tmp_inputs_3d, tmp_refine_3d, ax3dref)
+
+    # show source 2d
+    ax2dref = fig3d.add_subplot(2, 3, 6)
+    ax2dref.set_title('refine 2d')
+    show2Dpose(tmp_refine_2d, ax2dref)
+
+    os.makedirs(f'poseaug_viz', exist_ok=True)
+    image_name = f'poseaug_viz/{args.posenet_name}_epoch_{epoch}'
+    plt.savefig(image_name)
+    plt.close('all')
+    import ipdb; ipdb.set_trace()

@@ -1,11 +1,12 @@
 from __future__ import print_function, absolute_import, division
 
 import os.path as path
+import pickle
 
 import numpy as np
 from torch.utils.data import DataLoader
 
-from common.data_loader import PoseDataSet, PoseBuffer
+from common.data_loader import PoseDataSet, PoseDataSet_8, PoseBuffer
 from utils.data_utils import fetch, read_3d_data, create_2d_data
 
 '''
@@ -50,12 +51,31 @@ def data_preparation(args):
     poses_valid, poses_valid_2d, actions_valid, cams_valid = fetch(subjects_test, dataset, keypoints, action_filter,
                                                                    stride)
 
+    with open("data/gcn_output.pkl", "rb") as p_f1:
+        gcn_valid_3d = pickle.load(p_f1)
+    with open("data/mlp_output.pkl", "rb") as p_f2:
+        mlp_valid_3d = pickle.load(p_f2)
+    with open("data/stgcn_output.pkl", "rb") as p_f3:
+        stgcn_valid_3d = pickle.load(p_f3)
+    with open("data/videopose_output.pkl", "rb") as p_f4:
+        videopose_valid_3d = pickle.load(p_f4)
+
     train_loader = DataLoader(PoseDataSet(poses_train, poses_train_2d, actions_train, cams_train),
                               batch_size=args.batch_size,
                               shuffle=True, num_workers=args.num_workers, pin_memory=True)
     valid_loader = DataLoader(PoseDataSet(poses_valid, poses_valid_2d, actions_valid, cams_valid),
                               batch_size=args.batch_size,
                               shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    # valid_loader = DataLoader(PoseDataSet_8(poses_valid,
+                                            # poses_valid_2d,
+                                            # gcn_valid_3d,
+                                            # mlp_valid_3d,
+                                            # stgcn_valid_3d,
+                                            # videopose_valid_3d,
+                                            # actions_valid,
+                                            # cams_valid),
+                              # batch_size=args.batch_size,
+                              # shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
     ############################################
     # prepare cross dataset validation
