@@ -41,7 +41,7 @@ def train(data_loader,
     # Switch to train mode
     torch.set_grad_enabled(True)
     port.train()
-    model_pos.train()
+    model_pos.eval()
     end = time.time()
 
     ## TODO parallel
@@ -66,15 +66,16 @@ def train(data_loader,
 
         ## TODO gt, targets_3d 다른지 확인
         pos_output = model_pos(inputs_2d.view(num_poses, -1))
-        pos_output = pos_output[:, :, :] - pos_output[:, :1, :]  # the output is relative to the 0 joint
-        ref_output = port(pos_output).logits.view(num_poses, -1, 3)
+        pos_output_localized = pos_output[:, :, :] - pos_output[:, :1, :]  # the output is relative to the 0 joint
+        ref_output = port(pos_output_localized).logits.view(num_poses, -1, 3)
 
         optimizer.zero_grad()
-        pos_loss = criterion(pos_output, targets_3d)
+        pos_loss = criterion(pos_output_localized, targets_3d)
         ref_loss = criterion(ref_output, targets_3d)
         (pos_loss + lambda_ref * ref_loss).mean().backward()
         if max_norm:
-            nn.utils.clip_grad_norm_([model_pos.parameters(), port.parameters()], max_norm=1)
+            nn.utils.clip_grad_norm_(model_pos.parameters(), max_norm=1)
+            nn.utils.clip_grad_norm_(port.parameters(), max_norm=1)
         optimizer.step()
         if scheduler_name == "cos_warmup":
             scheduler.step()

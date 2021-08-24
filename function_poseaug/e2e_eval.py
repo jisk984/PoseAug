@@ -23,7 +23,7 @@ def draw(data, ax):
 ####################################################################
 # ### evaluate p1 p2 pck auc dataset with test-flip-augmentation
 ####################################################################
-def evaluate(data_loader, model_pos_eval, model_port_eval, device, args=None, summary=None, writer=None, key='', tag='', flipaug=''):
+def evaluate(data_loader, model_pos_eval, model_port_eval, device, args=None, summary=None, writer=None, key='', tag='', flipaug=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     epoch_p1 = AverageMeter()
@@ -69,13 +69,12 @@ def evaluate(data_loader, model_pos_eval, model_port_eval, device, args=None, su
                 pos_output_localized = pos_output[:, :, :] - pos_output[:, :1, :]  # the output is relative to the 0 joint
                 ref_output = model_port_eval(pos_output_localized)
         # caculate the relative position.
-        # ref_output = ref_output[:, :, :] - ref_output[:, :1, :]  # the output is relative to the 0 joint
         targets_3d = targets_3d[:, :, :] - targets_3d[:, :1, :]  # the output is relative to the 0 joint
 
         # compute p1 and p2
-        p1score = mpjpe(pos_output.cpu(), targets_3d.cpu()).item() * 1000.0
+        p1score = mpjpe(pos_output_localized.cpu(), targets_3d.cpu()).item() * 1000.0
         epoch_p1.update(p1score, num_poses)
-        p2score = p_mpjpe(pos_output.cpu().numpy(), targets_3d.cpu().numpy()).item() * 1000.0
+        p2score = p_mpjpe(pos_output_localized.cpu().numpy(), targets_3d.cpu().numpy()).item() * 1000.0
         epoch_p2.update(p2score, num_poses)
 
         p3score = mpjpe(ref_output.logits.view(num_poses, -1, 3).cpu(), targets_3d.cpu()).item() * 1000.0

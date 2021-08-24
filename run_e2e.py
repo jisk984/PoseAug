@@ -130,13 +130,13 @@ if __name__ == '__main__':
     # copy from #https://pytorch.org/docs/stable/notes/randomness.html
     torch.backends.cudnn.deterministic = True
     cudnn.benchmark = True
-    args.wandb_dir = "/mnt/data3"
+    args.wandb_dir = "/home/antlion"
     wandb.init(
         project=f"H36M_e2e",
         entity="chibros",
         config=args,
         sync_tensorboard=True,
-        dir=args.wandb_dir,
+        # dir=args.wandb_dir,
     )
     args.ckpt_dir = wandb.run.dir
     main(args)
